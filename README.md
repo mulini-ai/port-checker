@@ -74,13 +74,13 @@ Make sure **TShark** is added to your system's PATH.
 3. Run the script:
 
    ```bash
-   python your_script_name.py
+   python3 main.py
    ```
 
 4. When prompted, enter the full path to your main directory:
 
    ```
-   Enter the path of the main directory: C:\Users\YourName\Documents\pcap_data
+   Enter the path of the main directory: /home/YOUR_USER/pcap_folder
    ```
 
 ---
