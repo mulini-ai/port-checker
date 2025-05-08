@@ -1,0 +1,131 @@
+import os
+import subprocess
+import json
+from collections import defaultdict
+import re
+
+#versione open source
+def read_local_ip(ip_file_path):
+    try:
+        with open(ip_file_path, 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        print(f"[ERRORE] File {ip_file_path} non trovato.")
+        return None
+
+def read_device_name(name_file_path, fallback_name):
+    try:
+        with open(name_file_path, 'r') as f:
+            name = f.read().strip()
+            if not name:
+                print(f"[ATTENZIONE] File {name_file_path} vuoto. Uso nome '{fallback_name}'.")
+                return fallback_name
+            return name
+    except FileNotFoundError:
+        print(f"[ATTENZIONE] File {name_file_path} non trovato, uso nome '{fallback_name}'.")
+        return fallback_name
+
+def analyze_pcap_files(directory, local_ip):
+    tcp_ports_count = defaultdict(int)
+    udp_ports_count = defaultdict(int)
+
+    files = [f for f in os.listdir(directory) if f.endswith(".pcap")]
+    if not files:
+        print(f"[INFO] Nessun file PCAP in {directory}.")
+        return tcp_ports_count, udp_ports_count
+
+    print(f"[INFO] Trovati {len(files)} file PCAP in {directory}.")
+
+    for i, filename in enumerate(files, 1):
+        print(f"[{i}/{len(files)}] Analizzando {filename}")
+        pcap_path = os.path.join(directory, filename)
+
+        command = [
+            "tshark", "-r", pcap_path,
+            "-Y", "!(ip.src >= 10.0.0.0 && ip.src <= 10.255.255.255) && !(ip.src >= 172.16.0.0 && ip.src <= 172.31.255.255) && !(ip.src >= 192.168.0.0 && ip.src <= 192.168.255.255) && !(ip.dst >= 10.0.0.0 && ip.dst <= 10.255.255.255) && !(ip.dst >= 172.16.0.0 && ip.dst <= 172.31.255.255) && !(ip.dst >= 192.168.0.0 && ip.dst <= 192.168.255.255) && ((tcp.flags.syn == 1 && tcp.flags.ack == 0) || udp)",
+            "-T", "fields",
+            "-e", "tcp.dstport",
+            "-e", "udp.dstport"
+        ]
+
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, check=True)
+            lines = result.stdout.splitlines()
+
+            for line in lines:
+                ports = line.split("\t")
+                for idx, port in enumerate(ports):
+                    if port.isdigit():
+                        if idx == 0:
+                            tcp_ports_count[int(port)] += 1
+                        elif idx == 1:
+                            udp_ports_count[int(port)] += 1
+
+        except subprocess.CalledProcessError as e:
+            print(f"[ERRORE] tshark fallito su {filename}: {e}. Nessuna porta trovata.")
+
+    return tcp_ports_count, udp_ports_count
+
+def process_directory(base_directory):
+    subdirectories = [d for d in os.listdir(base_directory) if os.path.isdir(os.path.join(base_directory, d))]
+
+    for subdir in subdirectories:
+        subdir_path = os.path.join(base_directory, subdir)
+
+        ip_file_path = os.path.join(subdir_path, "ip.txt")
+        local_ip = read_local_ip(ip_file_path)
+        if not local_ip:
+            continue
+
+        match = re.search(r'pcap(\d+)', subdir)
+        pcap_num = match.group(1) if match else subdir
+
+        name_file_path = os.path.join(subdir_path, "name.txt")
+        fallback_name = f"dispositivo {pcap_num}"
+        device_name = read_device_name(name_file_path, fallback_name)
+
+        tcp_ports_count, udp_ports_count = analyze_pcap_files(subdir_path, local_ip)
+
+        tcp_sorted = sorted(tcp_ports_count.items(), key=lambda x: x[1], reverse=True)
+        udp_sorted = sorted(udp_ports_count.items(), key=lambda x: x[1], reverse=True)
+
+        tcp_single_use = sum(1 for count in tcp_ports_count.values() if count == 1)
+        udp_single_use = sum(1 for count in udp_ports_count.values() if count == 1)
+
+        result = {
+            "device_name": device_name,
+            "local_ip": local_ip,
+            "tcp": {
+                "total_ports": len(tcp_ports_count),
+                "single_use_ports": tcp_single_use,
+                "ports": tcp_sorted
+            },
+            "udp": {
+                "total_ports": len(udp_ports_count),
+                "single_use_ports": udp_single_use,
+                "ports": udp_sorted
+            }
+        }
+
+        log_dir = os.path.join(base_directory, "log")
+        os.makedirs(log_dir, exist_ok=True)
+
+        output_path = os.path.join(log_dir, f"analisi_porte_{pcap_num}.json")
+
+        with open(output_path, "w") as f:
+            json.dump(result, f, indent=4)
+
+        print(f"[SUCCESSO] Risultato salvato in {output_path}")
+
+def main():
+    print("== Analisi Porte da File PCAP ==")
+    base_directory = input("Inserisci il percorso della directory principale: ").strip()
+
+    if not os.path.isdir(base_directory):
+        print(f"[ERRORE] La cartella '{base_directory}' non esiste.")
+        return
+
+    process_directory(base_directory)
+
+if __name__ == "__main__":
+    main()
