@@ -15,12 +15,10 @@ Before running the script, structure your main directory as follows:
 main_pcap_folder/
 │
 ├── pcap1/
-│   ├── ip.txt        # contains the local IP of the device (e.g., 192.168.1.100)
 │   ├── name.txt      # contains the name of the device (e.g., Laptop_Office)
 │   └── *.pcap        # one or more PCAP files to analyze
 │
 ├── pcap2/
-│   ├── ip.txt
 │   ├── name.txt
 │   └── *.pcap
 │
@@ -29,7 +27,6 @@ main_pcap_folder/
 
 Each subfolder must be named with the prefix `pcap` followed by a number (e.g., `pcap1`, `pcap2`, ...).
 
-- `ip.txt`: contains the local IP address of the device recorded in the PCAPs.
 - `name.txt`: contains a readable name for the device.
 - One or more `.pcap` files must be present for analysis.
 
@@ -69,7 +66,7 @@ Make sure **TShark** is added to your system's PATH.
 
 ## ▶️ How to Run the Script
 
-1. Place the script in a folder of your choice.
+1. Place the script in a folder of your choice together with find_ip.py, which finds the IP by analyzing communications between the device and the DHCP server.
 2. Open a terminal or command prompt.
 3. Run the script:
 
@@ -113,4 +110,5 @@ Each JSON file includes:
 - Only:
   - **TCP packets** with the **SYN** flag and **no ACK** (new connections)
   - **All UDP packets**
+  - **Packets** with the **device IP** as **source**
   are considered.
