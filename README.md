@@ -16,10 +16,12 @@ main_pcap_folder/
 │
 ├── pcap1/
 │   ├── name.txt      # contains the name of the device (e.g., Laptop_Office)
+|   ├── mac.txt       # contains the mac of the device (e.g, cc:8d:a2:a0:09:78)
 │   └── *.pcap        # one or more PCAP files to analyze
 │
 ├── pcap2/
 │   ├── name.txt
+|   ├── mac.txt       # contains the mac of the device (e.g, cc:8d:a2:a0:09:78)
 │   └── *.pcap
 │
 ...
@@ -27,6 +29,7 @@ main_pcap_folder/
 
 Each subfolder must be named with the prefix `pcap` followed by a number (e.g., `pcap1`, `pcap2`, ...).
 
+- `mac.txt`: contains the mac of the device.
 - `name.txt`: contains a readable name for the device.
 - One or more `.pcap` files must be present for analysis.
 
@@ -110,5 +113,5 @@ Each JSON file includes:
 - Only:
   - **TCP packets** with the **SYN** flag and **no ACK** (new connections)
   - **All UDP packets**
-  - **Packets** with the **device IP** as **source**
+  - **Packets** with the **mac IP** as **source**
   are considered.
