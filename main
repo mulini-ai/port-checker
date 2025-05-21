@@ -4,17 +4,14 @@ import json
 from collections import defaultdict
 import re
 from datetime import datetime
-from find_ip import extract_ip_from_dhcp  # imports the DHCP IP extraction function
 
-#this script analyzes .pcap files in a given directory, extracting TCP and UDP destination ports
-
+# This script analyzes .pcap files in a given directory, extracting TCP and UDP destination ports
 
 def log(msg, level="INFO"):
     """
     Prints a timestamped log message with a given level.
     """
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{level}] {msg}")
-
 
 def read_device_name(name_file_path, fallback_name):
     """
@@ -32,10 +29,26 @@ def read_device_name(name_file_path, fallback_name):
         log(f"File {name_file_path} not found. Using fallback name '{fallback_name}'.", "WARNING")
         return fallback_name
 
-def analyze_pcap_files(directory, local_ip):
+def read_mac_address(mac_file_path):
+    """
+    Reads the MAC address from a file, stripping whitespace and converting to lowercase.
+    Returns None if the file is missing or empty.
+    """
+    try:
+        with open(mac_file_path, 'r', encoding='utf-8') as f:
+            mac = f.read().strip().lower()
+            if mac:
+                return mac
+            else:
+                log(f"MAC address file {mac_file_path} is empty.", "WARNING")
+    except FileNotFoundError:
+        log(f"MAC address file {mac_file_path} not found.", "WARNING")
+    return None
+
+def analyze_pcap_files(directory, mac_address):
     """
     Analyzes .pcap files in the given directory, extracting destination TCP and UDP ports
-    from traffic originating from the specified local IP. Internal traffic is filtered out.
+    from traffic originating from the specified MAC address. Internal traffic is filtered out.
     """
     tcp_ports_count = defaultdict(int)
     udp_ports_count = defaultdict(int)
@@ -47,9 +60,8 @@ def analyze_pcap_files(directory, local_ip):
 
     log(f"Found {len(pcap_files)} PCAP files in {directory}. Starting TCP/UDP port analysis.", "INFO")
 
-    # tshark display filter expression
     filter_expr = (
-        f"ip.src == {local_ip} && "
+        f"eth.src == {mac_address} && "
         "!(ip.dst >= 10.0.0.0 && ip.dst <= 10.255.255.255) && "
         "!(ip.dst >= 172.16.0.0 && ip.dst <= 172.31.255.255) && "
         "!(ip.dst >= 192.168.0.0 && ip.dst <= 192.168.255.255) && "
@@ -86,18 +98,6 @@ def analyze_pcap_files(directory, local_ip):
 
     return tcp_ports_count, udp_ports_count
 
-def extract_ip_from_any_pcap(pcap_files, directory):
-    """
-    Tries to extract the DHCP-assigned IP address from any of the .pcap files in the directory.
-    Returns the first valid IP found, or None if none is available.
-    """
-    for pcap in pcap_files:
-        pcap_path = os.path.join(directory, pcap)
-        ip = extract_ip_from_dhcp(pcap_path)
-        if ip:
-            return ip
-    return None
-
 def process_directory(base_directory):
     """
     Iterates over subdirectories in the base directory, extracts device info and analyzes traffic,
@@ -115,9 +115,10 @@ def process_directory(base_directory):
             log(f"No PCAP files found in {subdir_path}, skipping.", "INFO")
             continue
 
-        local_ip = extract_ip_from_any_pcap(pcap_files, subdir_path)
-        if not local_ip:
-            log(f"Could not extract DHCP IP from any PCAP in {subdir_path}, skipping folder.", "WARNING")
+        mac_file_path = os.path.join(subdir_path, "mac.txt")
+        mac_address = read_mac_address(mac_file_path)
+        if not mac_address:
+            log(f"Could not read MAC address from {mac_file_path}, skipping folder.", "WARNING")
             continue
 
         match = re.search(r'pcap(\d+)', subdir)
@@ -127,7 +128,7 @@ def process_directory(base_directory):
         fallback_name = f"device {pcap_num}"
         device_name = read_device_name(name_file_path, fallback_name)
 
-        tcp_ports_count, udp_ports_count = analyze_pcap_files(subdir_path, local_ip)
+        tcp_ports_count, udp_ports_count = analyze_pcap_files(subdir_path, mac_address)
 
         tcp_sorted = sorted(tcp_ports_count.items(), key=lambda x: x[1], reverse=True)
         udp_sorted = sorted(udp_ports_count.items(), key=lambda x: x[1], reverse=True)
@@ -137,7 +138,7 @@ def process_directory(base_directory):
 
         result = {
             "device_name": device_name,
-            "local_ip": local_ip,
+            "mac_address": mac_address,
             "tcp": {
                 "contacted_ports": len(tcp_ports_count),
                 "ports_contacted_one_time": tcp_single_use,
