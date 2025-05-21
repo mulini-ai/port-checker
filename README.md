@@ -21,7 +21,7 @@ main_pcap_folder/
 │
 ├── pcap2/
 │   ├── name.txt
-|   ├── mac.txt       # contains the mac of the device (e.g, cc:8d:a2:a0:09:78)
+|   ├── mac.txt       
 │   └── *.pcap
 │
 ...
