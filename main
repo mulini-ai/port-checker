@@ -3,46 +3,66 @@ import subprocess
 import json
 from collections import defaultdict
 import re
+from datetime import datetime
+from find_ip import extract_ip_from_dhcp  # imports the DHCP IP extraction function
 
-#versione open source
-def read_local_ip(ip_file_path):
-    try:
-        with open(ip_file_path, 'r') as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        print(f"[ERRORE] File {ip_file_path} non trovato.")
-        return None
+#this script analyzes .pcap files in a given directory, extracting TCP and UDP destination ports
+
+
+def log(msg, level="INFO"):
+    """
+    Prints a timestamped log message with a given level.
+    """
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{level}] {msg}")
+
 
 def read_device_name(name_file_path, fallback_name):
+    """
+    Reads the device name from a file. If the file doesn't exist or is empty,
+    returns a fallback name.
+    """
     try:
-        with open(name_file_path, 'r') as f:
+        with open(name_file_path, 'r', encoding='utf-8') as f:
             name = f.read().strip()
             if not name:
-                print(f"[ATTENZIONE] File {name_file_path} vuoto. Uso nome '{fallback_name}'.")
+                log(f"File {name_file_path} is empty. Using fallback name '{fallback_name}'.", "WARNING")
                 return fallback_name
             return name
     except FileNotFoundError:
-        print(f"[ATTENZIONE] File {name_file_path} non trovato, uso nome '{fallback_name}'.")
+        log(f"File {name_file_path} not found. Using fallback name '{fallback_name}'.", "WARNING")
         return fallback_name
 
 def analyze_pcap_files(directory, local_ip):
+    """
+    Analyzes .pcap files in the given directory, extracting destination TCP and UDP ports
+    from traffic originating from the specified local IP. Internal traffic is filtered out.
+    """
     tcp_ports_count = defaultdict(int)
     udp_ports_count = defaultdict(int)
 
-    files = [f for f in os.listdir(directory) if f.endswith(".pcap")]
-    if not files:
-        print(f"[INFO] Nessun file PCAP in {directory}.")
+    pcap_files = [f for f in os.listdir(directory) if f.endswith(".pcap")]
+    if not pcap_files:
+        log(f"No PCAP files found in {directory}.", "INFO")
         return tcp_ports_count, udp_ports_count
 
-    print(f"[INFO] Trovati {len(files)} file PCAP in {directory}.")
+    log(f"Found {len(pcap_files)} PCAP files in {directory}. Starting TCP/UDP port analysis.", "INFO")
 
-    for i, filename in enumerate(files, 1):
-        print(f"[{i}/{len(files)}] Analizzando {filename}")
+    # tshark display filter expression
+    filter_expr = (
+        f"ip.src == {local_ip} && "
+        "!(ip.dst >= 10.0.0.0 && ip.dst <= 10.255.255.255) && "
+        "!(ip.dst >= 172.16.0.0 && ip.dst <= 172.31.255.255) && "
+        "!(ip.dst >= 192.168.0.0 && ip.dst <= 192.168.255.255) && "
+        "((tcp.flags.syn == 1 && tcp.flags.ack == 0) || udp)"
+    )
+
+    for i, filename in enumerate(pcap_files, 1):
         pcap_path = os.path.join(directory, filename)
+        log(f"[{i}/{len(pcap_files)}] Analyzing {filename}", "INFO")
 
         command = [
             "tshark", "-r", pcap_path,
-            "-Y", "!(ip.src >= 10.0.0.0 && ip.src <= 10.255.255.255) && !(ip.src >= 172.16.0.0 && ip.src <= 172.31.255.255) && !(ip.src >= 192.168.0.0 && ip.src <= 192.168.255.255) && !(ip.dst >= 10.0.0.0 && ip.dst <= 10.255.255.255) && !(ip.dst >= 172.16.0.0 && ip.dst <= 172.31.255.255) && !(ip.dst >= 192.168.0.0 && ip.dst <= 192.168.255.255) && ((tcp.flags.syn == 1 && tcp.flags.ack == 0) || udp)",
+            "-Y", filter_expr,
             "-T", "fields",
             "-e", "tcp.dstport",
             "-e", "udp.dstport"
@@ -62,26 +82,49 @@ def analyze_pcap_files(directory, local_ip):
                             udp_ports_count[int(port)] += 1
 
         except subprocess.CalledProcessError as e:
-            print(f"[ERRORE] tshark fallito su {filename}: {e}. Nessuna porta trovata.")
+            log(f"tshark failed on {filename}: {e}. No ports collected.", "ERROR")
 
     return tcp_ports_count, udp_ports_count
 
+def extract_ip_from_any_pcap(pcap_files, directory):
+    """
+    Tries to extract the DHCP-assigned IP address from any of the .pcap files in the directory.
+    Returns the first valid IP found, or None if none is available.
+    """
+    for pcap in pcap_files:
+        pcap_path = os.path.join(directory, pcap)
+        ip = extract_ip_from_dhcp(pcap_path)
+        if ip:
+            return ip
+    return None
+
 def process_directory(base_directory):
+    """
+    Iterates over subdirectories in the base directory, extracts device info and analyzes traffic,
+    saving results to JSON files.
+    """
     subdirectories = [d for d in os.listdir(base_directory) if os.path.isdir(os.path.join(base_directory, d))]
+    if not subdirectories:
+        log(f"No subdirectories found in {base_directory}.", "WARNING")
+        return
 
     for subdir in subdirectories:
         subdir_path = os.path.join(base_directory, subdir)
+        pcap_files = [f for f in os.listdir(subdir_path) if f.endswith(".pcap")]
+        if not pcap_files:
+            log(f"No PCAP files found in {subdir_path}, skipping.", "INFO")
+            continue
 
-        ip_file_path = os.path.join(subdir_path, "ip.txt")
-        local_ip = read_local_ip(ip_file_path)
+        local_ip = extract_ip_from_any_pcap(pcap_files, subdir_path)
         if not local_ip:
+            log(f"Could not extract DHCP IP from any PCAP in {subdir_path}, skipping folder.", "WARNING")
             continue
 
         match = re.search(r'pcap(\d+)', subdir)
         pcap_num = match.group(1) if match else subdir
 
         name_file_path = os.path.join(subdir_path, "name.txt")
-        fallback_name = f"dispositivo {pcap_num}"
+        fallback_name = f"device {pcap_num}"
         device_name = read_device_name(name_file_path, fallback_name)
 
         tcp_ports_count, udp_ports_count = analyze_pcap_files(subdir_path, local_ip)
@@ -96,13 +139,13 @@ def process_directory(base_directory):
             "device_name": device_name,
             "local_ip": local_ip,
             "tcp": {
-                "total_ports": len(tcp_ports_count),
-                "single_use_ports": tcp_single_use,
+                "contacted_ports": len(tcp_ports_count),
+                "ports_contacted_one_time": tcp_single_use,
                 "ports": tcp_sorted
             },
             "udp": {
-                "total_ports": len(udp_ports_count),
-                "single_use_ports": udp_single_use,
+                "contacted_ports": len(udp_ports_count),
+                "ports_contacted_one_time": udp_single_use,
                 "ports": udp_sorted
             }
         }
@@ -110,19 +153,25 @@ def process_directory(base_directory):
         log_dir = os.path.join(base_directory, "log")
         os.makedirs(log_dir, exist_ok=True)
 
-        output_path = os.path.join(log_dir, f"analisi_porte_{pcap_num}.json")
+        output_path = os.path.join(log_dir, f"port_analysis_{pcap_num}.json")
 
-        with open(output_path, "w") as f:
-            json.dump(result, f, indent=4)
-
-        print(f"[SUCCESSO] Risultato salvato in {output_path}")
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(result, f, indent=4)
+            log(f"Result saved to {output_path}", "SUCCESS")
+        except Exception as e:
+            log(f"Error writing JSON file {output_path}: {e}", "ERROR")
 
 def main():
-    print("== Analisi Porte da File PCAP ==")
-    base_directory = input("Inserisci il percorso della directory principale: ").strip()
+    """
+    Entry point of the script. Prompts the user for the main folder path
+    and starts processing the PCAP directories.
+    """
+    print("== PCAP Port Analysis Tool ==")
+    base_directory = input("Enter the path of the main directory: ").strip()
 
     if not os.path.isdir(base_directory):
-        print(f"[ERRORE] La cartella '{base_directory}' non esiste.")
+        print(f"[ERROR] The folder '{base_directory}' does not exist.")
         return
 
     process_directory(base_directory)
