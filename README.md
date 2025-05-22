@@ -126,6 +126,7 @@ This helps to better understand how many ports each device contacts, how many of
 ## 📁 Input Directory
 Before running the visualization script, make sure the log folder containing the JSON output files is present:
 
+...
 main_pcap_folder/
 ├── log/
 │   ├── port_analysis_1.json
@@ -146,6 +147,7 @@ The script reads all .json files inside that folder.
 ## 🖼️ Output
 The script will generate one horizontal bar chart per protocol (TCP and UDP) and save them in a new plots/ folder:
 
+...
 main_pcap_folder/
 ├── plots/
 │   ├── grafico_porte_TCP.png
