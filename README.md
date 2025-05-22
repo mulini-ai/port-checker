@@ -1,5 +1,5 @@
 # 📦 port-checker
-**##main**
+##main
 
 ### PCAP Port Analysis Tool
 
@@ -117,7 +117,7 @@ Each JSON file includes:
   - **Packets** with the **mac ** as **source**
   are considered.
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-**##visualize_port**
+##visualize_port**
 📊 **Port Usage Visualization**
 Graphical Analysis of Contacted TCP/UDP Ports
 Once the PCAP files have been analyzed and the JSON reports have been generated, you can visualize the data using the provided plotting script.
