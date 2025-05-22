@@ -151,8 +151,8 @@ The script will generate one horizontal bar chart per protocol (TCP and UDP) and
 ```
 main_pcap_folder/
 ├── plots/
-│   ├── grafico_porte_TCP.png
-│   ├── grafico_porte_UDP.png
+│   ├── TCP_ports.png
+│   ├── UDP_ports.png
 ```
 
 Each plot shows:
